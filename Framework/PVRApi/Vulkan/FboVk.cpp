@@ -86,21 +86,27 @@ bool FboVk_::init(const FboCreateParam& desc)
 	fboCreateInfo.flags = 0;
 	fboCreateInfo.layers = desc.layers;
 	fboCreateInfo.renderPass = native_cast(*desc.renderPass);
-	fboCreateInfo.attachmentCount = ((uint32)desc.colorViews.size() + (desc.depthStencilView.isValid() != 0));
+	fboCreateInfo.attachmentCount = ((uint32)desc.colorViews.size() + (desc.depthStencilView.isValid() != 0) + (desc.sampleDepthStencilView.isValid() != 0)) ;
 
 	std::vector<VkImageView> imageViews;
 	imageViews.resize(fboCreateInfo.attachmentCount);
 	fboCreateInfo.pAttachments = imageViews.data();
-
-	for (uint32 i = 0; i < desc.colorViews.size(); ++i)
+	uint32 i = 0;
+	for (i = 0; i < desc.colorViews.size(); i++)
 	{
 		imageViews[i] = *desc.colorViews[i]->getNativeObject();
 	}
-
+	if (desc.sampleDepthStencilView.isValid())
+	{
+		imageViews[i] = desc.sampleDepthStencilView->getNativeObject();
+		i++;
+	}
 	if (desc.depthStencilView.isValid())
 	{
-		imageViews.back() = desc.depthStencilView->getNativeObject();
+		imageViews[i] = desc.depthStencilView->getNativeObject();
+		i++;
 	}
+
 	return (vk::CreateFramebuffer(contextVk.getDevice(), &fboCreateInfo, NULL, &handle) == VK_SUCCESS);
 }
 

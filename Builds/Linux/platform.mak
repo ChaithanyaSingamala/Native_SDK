@@ -9,7 +9,7 @@ message = \
 	$(info $(nl)**********************************************************************$(nl))
 	
 ifdef SDKDIR
-SDKDIR   := $(shell cd $(SDKDIR) && pwd)
+#SDKDIR   := $(shell cd $(SDKDIR) && pwd)
 endif
 
 ifdef Debug

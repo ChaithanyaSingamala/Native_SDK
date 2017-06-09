@@ -7,9 +7,13 @@
 #pragma once
 
 #include "PVRCore/CoreIncludes.h"
+#ifdef EGL_API_FB
+#include <EGL-fb/egl.h>
+#include <EGL-fb/eglext.h>
+#else
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-
+#endif
 namespace pvr {
 namespace platform {
 /*!*********************************************************************************************************************

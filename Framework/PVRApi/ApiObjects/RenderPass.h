@@ -355,6 +355,7 @@ private:
 	enum { MaxColorAttachments = 8};
 	friend class impl::RenderPass_;
 	RenderPassDepthStencilInfo	depthStencil;
+	RenderPassDepthStencilInfo	sampleDepthStencil;
 	RenderPassColorInfo		color[MaxColorAttachments];
 	std::vector<SubPass>	subPass;
 	std::vector<SubPassDependency>	subPassDependency;
@@ -440,6 +441,11 @@ public:
 		return depthStencil;
 	}
 
+	const RenderPassDepthStencilInfo& getSampleDepthStencilInfo()const
+	{
+		return sampleDepthStencil;
+	}
+
 	/*!*********************************************************************************************************************
 	\brief Add color info to the specified color attachment point.
 	\param index The color attachment point to add the color info, index must be consecutive
@@ -466,6 +472,12 @@ public:
 	RenderPassCreateParam& setDepthStencilInfo(const RenderPassDepthStencilInfo& dsInfo)
 	{
 		depthStencil = dsInfo;
+		return *this;
+	}
+
+	RenderPassCreateParam& setSampleDepthStencilInfo(const RenderPassDepthStencilInfo& dsInfo)
+	{
+		sampleDepthStencil = dsInfo;
 		return *this;
 	}
 

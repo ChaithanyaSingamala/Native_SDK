@@ -22,6 +22,7 @@ struct FboCreateParam
 {
 	friend class impl::Fbo_;
 	TextureView depthStencilView;
+	TextureView sampleDepthStencilView;
 	//< fbo's color attachments the attachments are mapped in the order they are added
 	pvr::uint32 layers;
 	pvr::uint32 width, height;
@@ -130,6 +131,26 @@ public:
 		    format == PixelFormat::Depth32Stencil8)
 		{
 			this->depthStencilView = depthStencilView;
+		}
+		else
+		{
+			assertion(false, "Invalid Depth stencil attachment Format");
+		}
+		return *this;
+	}
+
+	FboCreateParam& setSampleDepthStencil(const TextureView depthStencilView)
+	{
+		// validate the attachment format
+		const auto& format = depthStencilView->getResource()->getFormat().format;
+		if (format == PixelFormat::Depth16 ||
+			format == PixelFormat::Depth24 ||
+			format == PixelFormat::Depth32 ||
+			format == PixelFormat::Depth16Stencil8 ||
+			format == PixelFormat::Depth24Stencil8 ||
+			format == PixelFormat::Depth32Stencil8)
+		{
+			this->sampleDepthStencilView = depthStencilView;
 		}
 		else
 		{

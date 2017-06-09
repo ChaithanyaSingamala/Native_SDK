@@ -375,6 +375,18 @@ void PlatformContext::release()
 			vkglue::DestroyImage(dev, m_displayHandle->onscreenFbo.depthStencilImage[i].first, NULL);
 			vkglue::FreeMemory(dev, m_displayHandle->onscreenFbo.depthStencilImage[i].second, NULL);
 		}
+
+		if (m_displayHandle->onscreenFbo.hasMultisamples)
+		{
+			vkglue::DestroyImageView(dev, m_displayHandle->onscreenFbo.sampleColorImageViews[i], NULL);
+			vkglue::DestroyImage(dev, m_displayHandle->onscreenFbo.sampleColorImage[i].first, NULL);
+			vkglue::FreeMemory(dev, m_displayHandle->onscreenFbo.sampleColorImage[i].second, NULL);
+
+			vkglue::DestroyImageView(dev, m_displayHandle->onscreenFbo.sampleDepthStencilImageView[i], NULL);
+			vkglue::DestroyImage(dev, m_displayHandle->onscreenFbo.sampleDepthStencilImage[i].first, NULL);
+			vkglue::FreeMemory(dev, m_displayHandle->onscreenFbo.sampleDepthStencilImage[i].second, NULL);
+		}
+
 		vkglue::DestroyFence(dev, m_platformContextHandles->fenceAcquire[i], NULL);
 		vkglue::DestroyFence(dev, m_platformContextHandles->fencePrePresent[i], NULL);
 		vkglue::DestroyFence(dev, m_platformContextHandles->fenceRender[i], NULL);
@@ -514,7 +526,7 @@ static inline bool initVkInstanceAndPhysicalDevice(NativePlatformHandles_& platf
 #if defined __linux__
 	appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 3);
 #else
-	appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 5);
+	appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 39);
 #endif
 	appInfo.applicationVersion = 1;
 	appInfo.engineVersion = 0;
@@ -1069,6 +1081,7 @@ static bool initSwapChain(NativePlatformHandles_ & platformHandle, NativeDisplay
 	vkSuccessOrDie(vkglue::GetPhysicalDeviceSurfacePresentModesKHR(platformHandle.context.physicalDevice,
 	               displayHandle.surface, &numPresentMode, &presentModes[0]), "failed to get the present modes");
 
+	Log(Logger::Information, "present modes length %d ", numPresentMode);
 	// Default is FIFO - Which is typical Vsync.
 	VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	VkPresentModeKHR desiredSwapMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -1086,6 +1099,7 @@ static bool initSwapChain(NativePlatformHandles_ & platformHandle, NativeDisplay
 	}
 	for (size_t i = 0; i < numPresentMode; i++)
 	{
+		Log(Logger::Information, "present modes %d [%d] desired %d ", i, presentModes[i], desiredSwapMode);
 		if (presentModes[i] == desiredSwapMode)
 		{
 			//Precise match - Break!
@@ -1193,6 +1207,16 @@ static bool initSwapChain(NativePlatformHandles_ & platformHandle, NativeDisplay
 		displayHandle.onscreenFbo.depthStencilImageView.resize(displayHandle.swapChainLength);
 	}
 
+	if (displayHandle.onscreenFbo.hasMultisamples)
+	{
+		displayHandle.onscreenFbo.sampleColorImage.resize(displayHandle.swapChainLength);
+		displayHandle.onscreenFbo.sampleColorImageViews.resize(displayHandle.swapChainLength);
+		displayHandle.onscreenFbo.sampleDepthStencilImage.resize(displayHandle.swapChainLength);
+		displayHandle.onscreenFbo.sampleDepthStencilImageView.resize(displayHandle.swapChainLength);
+	}
+
+
+
 	for (uint32 i = 0; i < displayHandle.swapChainLength; ++i)
 	{
 		viewCreateInfo.image = displayHandle.onscreenFbo.colorImages[i];
@@ -1216,9 +1240,9 @@ static bool initSwapChain(NativePlatformHandles_ & platformHandle, NativeDisplay
 			dsCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 			dsCreateInfo.mipLevels = 1;
 			dsCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-			dsCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			dsCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 			dsCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			dsCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			//dsCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 			VkResult rslt = vkglue::CreateImage(platformHandle.context.device, &dsCreateInfo, NULL,
 			                                    &displayHandle.onscreenFbo.depthStencilImage[i].first);
@@ -1247,6 +1271,96 @@ static bool initSwapChain(NativePlatformHandles_ & platformHandle, NativeDisplay
 			vkSuccessOrDie(vkglue::CreateImageView(platformHandle.context.device, &dsViewCreateInfo, NULL,
 			                                       &displayHandle.onscreenFbo.depthStencilImageView[i]), "Create Depth stencil image view");
 		}
+
+		if (displayHandle.onscreenFbo.hasMultisamples)
+		{
+			// create the sample color image
+			VkImageCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+			createInfo.format = displayHandle.onscreenFbo.colorFormat;
+			createInfo.extent.width = displayHandle.displayExtent.width;
+			createInfo.extent.height = displayHandle.displayExtent.height;
+			createInfo.extent.depth = 1;
+			createInfo.imageType = VK_IMAGE_TYPE_2D;
+			createInfo.arrayLayers = 1;
+			createInfo.samples = VK_SAMPLE_COUNT_4_BIT;
+			createInfo.mipLevels = 1;
+			createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+			createInfo.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+			createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			VkResult rslt = vkglue::CreateImage(platformHandle.context.device, &createInfo, NULL,
+				&displayHandle.onscreenFbo.sampleColorImage[i].first);
+			vkSuccessOrDie(rslt, "Image creation failed");
+
+			if (!allocateImageDeviceMemory(platformHandle, displayHandle.onscreenFbo.sampleColorImage[i].first,
+				displayHandle.onscreenFbo.sampleColorImage[i].second, NULL))
+			{
+				assertion(false, "Memory allocation failed");
+			}
+			// create the depth stencil view
+			VkImageViewCreateInfo viewCreateInfo = {};
+			viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewCreateInfo.image = displayHandle.onscreenFbo.sampleColorImage[i].first;
+			viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewCreateInfo.format = displayHandle.onscreenFbo.colorFormat;
+			viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+			viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+			viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+			viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+			viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			viewCreateInfo.subresourceRange.levelCount = 1;
+			viewCreateInfo.subresourceRange.layerCount = 1;
+
+			vkSuccessOrDie(vkglue::CreateImageView(platformHandle.context.device, &viewCreateInfo, NULL,
+				&displayHandle.onscreenFbo.sampleColorImageViews[i]), "Create sample color image view");
+		}
+
+		if (displayHandle.onscreenFbo.hasMultisamples)
+		{
+			// create the sample depth stencil image
+			VkImageCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+			createInfo.format = displayHandle.onscreenFbo.depthStencilFormat;
+			createInfo.extent.width = displayHandle.displayExtent.width;
+			createInfo.extent.height = displayHandle.displayExtent.height;
+			createInfo.extent.depth = 1;
+			createInfo.imageType = VK_IMAGE_TYPE_2D;
+			createInfo.arrayLayers = 1;
+			createInfo.samples = VK_SAMPLE_COUNT_4_BIT;
+			createInfo.mipLevels = 1;
+			createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+			createInfo.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			VkResult rslt = vkglue::CreateImage(platformHandle.context.device, &createInfo, NULL,
+				&displayHandle.onscreenFbo.sampleDepthStencilImage[i].first);
+			vkSuccessOrDie(rslt, "Image creation failed");
+
+			if (!allocateImageDeviceMemory(platformHandle, displayHandle.onscreenFbo.sampleDepthStencilImage[i].first,
+				displayHandle.onscreenFbo.sampleDepthStencilImage[i].second, NULL))
+			{
+				assertion(false, "Memory allocation failed");
+			}
+			// create the depth stencil view
+			VkImageViewCreateInfo viewCreateInfo = {};
+			viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewCreateInfo.image = displayHandle.onscreenFbo.sampleDepthStencilImage[i].first;
+			viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewCreateInfo.format = displayHandle.onscreenFbo.depthStencilFormat;
+			viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+			viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+			viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+			viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+			viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | (hasStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0);
+			viewCreateInfo.subresourceRange.levelCount = 1;
+			viewCreateInfo.subresourceRange.layerCount = 1;
+
+			vkSuccessOrDie(vkglue::CreateImageView(platformHandle.context.device, &viewCreateInfo, NULL,
+				&displayHandle.onscreenFbo.sampleDepthStencilImageView[i]), "Create sample color image view");
+		}
 	}
 	return true;
 }
@@ -1268,17 +1382,28 @@ inline static void setInitialSwapchainLayouts(NativePlatformHandles_ & platformH
 		{
 			setImageLayout(cmdImgLayoutTrans, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			               VK_IMAGE_ASPECT_COLOR_BIT, 0, displayHandle.onscreenFbo.colorImages[i]);
+
+			setImageLayout(cmdImgLayoutTrans, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_ASPECT_COLOR_BIT, 0, displayHandle.onscreenFbo.sampleColorImage[i].first);
+
 		}
 		else// set all other swapchains to present so they will be transformed properly later.
 		{
 			setImageLayout(cmdImgLayoutTrans, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			               VK_IMAGE_ASPECT_COLOR_BIT, 0, displayHandle.onscreenFbo.colorImages[i]);
+				VK_IMAGE_ASPECT_COLOR_BIT, 0, displayHandle.onscreenFbo.colorImages[i]);
+
+			setImageLayout(cmdImgLayoutTrans, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_ASPECT_COLOR_BIT, 0, displayHandle.onscreenFbo.sampleColorImage[i].first);
 		}
 		if (useDepthStencil)
 		{
 			setImageLayout(cmdImgLayoutTrans, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			               VK_IMAGE_ASPECT_DEPTH_BIT | (hasStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0),
-			               0, displayHandle.onscreenFbo.depthStencilImage[i].first);
+				VK_IMAGE_ASPECT_DEPTH_BIT | (hasStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0),
+				0, displayHandle.onscreenFbo.depthStencilImage[i].first);
+		
+			setImageLayout(cmdImgLayoutTrans, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_ASPECT_DEPTH_BIT | (hasStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0),
+				0, displayHandle.onscreenFbo.sampleDepthStencilImage[i].first);
 		}
 	}
 	vkglue::EndCommandBuffer(cmdImgLayoutTrans);
@@ -1504,6 +1629,7 @@ Result PlatformContext::init()
 	bool hasDepth = m_OSManager.getDisplayAttributes().depthBPP > 0;
 	bool hasStencil = m_OSManager.getDisplayAttributes().stencilBPP > 0;
 	m_displayHandle->onscreenFbo.hasDepthStencil = hasDepth || hasStencil;
+	m_displayHandle->onscreenFbo.hasMultisamples = true;
 
 	if (!initVkInstanceAndPhysicalDevice(*m_platformContextHandles)) { return Result::UnknownError; }
 	if (!initSurface(*m_platformContextHandles, *m_displayHandle)) { return Result::UnknownError; }

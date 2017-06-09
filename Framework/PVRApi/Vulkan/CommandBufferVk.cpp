@@ -909,7 +909,7 @@ void  CommandBuffer_::beginRenderPass(api::Fbo& fbo, const api::RenderPass& rend
 	pImpl->objectRefs.push_back(fbo);
 	VkRenderPassBeginInfo nfo = {};
 	nfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	std::vector<VkClearValue> clearValues(numClearColors + 1);
+	std::vector<VkClearValue> clearValues(numClearColors + 1 + 1);
 	uint32 i = 0;
 	for (; i < numClearColors; ++i)
 	{
@@ -917,6 +917,10 @@ void  CommandBuffer_::beginRenderPass(api::Fbo& fbo, const api::RenderPass& rend
 	}
 	clearValues[i].depthStencil.depth = clearDepth;
 	clearValues[i].depthStencil.stencil = clearStencil;
+	i++;
+	clearValues[i].depthStencil.depth = clearDepth;
+	clearValues[i].depthStencil.stencil = clearStencil;
+
 
 	nfo.pClearValues = clearValues.data();
 	nfo.clearValueCount = (uint32)clearValues.size();

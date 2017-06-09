@@ -89,7 +89,15 @@ struct NativeDisplayHandle_
 		std::vector<VkImageView>colorImageViews;
 		std::vector<std::pair<VkImage, VkDeviceMemory>/**/> depthStencilImage;
 		std::vector<VkImageView>depthStencilImageView;
+
+		//samples
+		std::vector<std::pair<VkImage, VkDeviceMemory>/**/> sampleColorImage;
+		std::vector<VkImageView>sampleColorImageViews;
+		std::vector<std::pair<VkImage, VkDeviceMemory>/**/> sampleDepthStencilImage;
+		std::vector<VkImageView>sampleDepthStencilImageView;
+
 		bool hasDepthStencil;
+		bool hasMultisamples;
 		VkFormat colorFormat;
 		VkFormat depthStencilFormat;
 	} onscreenFbo;

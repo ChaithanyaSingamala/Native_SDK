@@ -32,6 +32,13 @@ bool GraphicsPipelineImplVk::init(const GraphicsPipelineCreateParam& desc, impl:
 	createInfoFactory.createInfo.flags = (parent ? VK_PIPELINE_CREATE_DERIVATIVE_BIT : 0);
 	createInfoFactory.createInfo.flags |= VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
 
+
+	VkPipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo = {};
+	pipelineMultisampleStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	pipelineMultisampleStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_4_BIT;
+
+	createInfoFactory.createInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
+
 	return pvr::vkIsSuccessful(vk::CreateGraphicsPipelines(pvr::api::native_cast(*m_context).getDevice(),
 	                           VK_NULL_HANDLE, 1, &createInfoFactory.createInfo,
 	                           NULL, &handle), "Create GraphicsPipeline");
@@ -120,6 +127,12 @@ bool ParentableGraphicsPipelineImplVk::init(const GraphicsPipelineCreateParam& d
 	}
 	vulkan::GraphicsPipelineCreateInfoVulkan createInfoFactory(desc, m_context, NULL);
 	createInfoFactory.createInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
+
+	VkPipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo = {};
+	pipelineMultisampleStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	pipelineMultisampleStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_4_BIT;
+
+	createInfoFactory.createInfo.pMultisampleState = &pipelineMultisampleStateCreateInfo;
 
 	return pvr::vkIsSuccessful(vk::CreateGraphicsPipelines(pvr::api::native_cast(m_context)->getDevice(),
 	                           m_pipeCache, 1, &createInfoFactory.createInfo, NULL, &handle), "Create Parentable GraphicsPipeline");

@@ -385,27 +385,47 @@ Multi<api::Fbo> ContextVk::createOnScreenFboSet(types::LoadOp colorLoadOp,
     types::LoadOp stencilLoadOp, types::StoreOp stencilStoreOp)
 {
 	// create the default fbo
+	api::RenderPassColorInfo sampleColorInfo;
+	sampleColorInfo.format = getPresentationImageFormat();
+	sampleColorInfo.loadOpColor = colorLoadOp;
+	sampleColorInfo.storeOpColor = colorStoreOp;
+	sampleColorInfo.numSamples = VK_SAMPLE_COUNT_4_BIT;
+
 	api::RenderPassColorInfo colorInfo;
-	api::RenderPassDepthStencilInfo dsInfo;
 	colorInfo.format = getPresentationImageFormat();
-	dsInfo.format = getDepthStencilImageFormat();
 	colorInfo.loadOpColor = colorLoadOp;
 	colorInfo.storeOpColor = colorStoreOp;
-	colorInfo.numSamples = 1;
+	colorInfo.numSamples = VK_SAMPLE_COUNT_1_BIT;
 
+	api::RenderPassDepthStencilInfo sampleDsInfo;
+	sampleDsInfo.format = getDepthStencilImageFormat();
+	sampleDsInfo.loadOpDepth = depthLoadOp;
+	sampleDsInfo.storeOpDepth = depthStoreOp;
+	sampleDsInfo.loadOpStencil = stencilLoadOp;
+	sampleDsInfo.storeOpStencil = stencilStoreOp;
+	sampleDsInfo.numSamples = VK_SAMPLE_COUNT_4_BIT;
+
+	api::RenderPassDepthStencilInfo dsInfo;
+	dsInfo.format = getDepthStencilImageFormat();
 	dsInfo.loadOpDepth = depthLoadOp;
 	dsInfo.storeOpDepth = depthStoreOp;
 	dsInfo.loadOpStencil = stencilLoadOp;
 	dsInfo.storeOpStencil = stencilStoreOp;
-	dsInfo.numSamples = 1;
+	dsInfo.numSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	pvr::api::RenderPassCreateParam renderPassDesc;
-	renderPassDesc.setColorInfo(0, colorInfo);
+	renderPassDesc.setColorInfo(0, sampleColorInfo);
+	renderPassDesc.setColorInfo(1, colorInfo);
+	//renderPassDesc.setColorInfo(2, colorInfo);
 	renderPassDesc.setDepthStencilInfo(dsInfo);
+	renderPassDesc.setSampleDepthStencilInfo(sampleDsInfo);
 
 	// Require at least one sub pass
 	pvr::api::SubPass subPass;
 	subPass.setColorAttachment(0, 0); // use color attachment 0
+//	subPass.setColorAttachment(1, 1); // use color attachment 0
+	subPass.setResolveAttachment(0, 1);
+	//subPass.setResolveAttachment(0, 3);
 	subPass.setDepthStencilAttachment(true);
 	renderPassDesc.setSubPass(0, subPass);
 
@@ -507,7 +527,7 @@ api::Fbo ContextVk::createOnScreenFboWithRenderPass(uint32 swapIndex, const api:
 	fboInfo.setRenderPass(renderPass);
 	api::vulkan::DefaultFboVk fbo;
 	{
-		api::vulkan::TextureViewVk texViewColor, texViewDs;
+		api::vulkan::TextureViewVk texViewColor, texViewDs, texViewSampleColor, texViewSampleDepth;
 		platform::NativeDisplayHandle_::FrameBuffer& fb = api::native_cast(*this).m_platformContext->getNativeDisplayHandle().onscreenFbo;
 		int i = swapIndex;
 		native::HTexture_ hColorTex;
@@ -542,7 +562,55 @@ api::Fbo ContextVk::createOnScreenFboWithRenderPass(uint32 swapIndex, const api:
 			texDs->setDimensions(types::Extent3D((uint16)fboInfo.width, (uint16)fboInfo.height));
 			fboInfo.setDepthStencil(texViewDs);
 		}
-		fboInfo.setColor(0, texViewColor);
+
+		if (fb.hasMultisamples)
+		{
+			{
+				native::HTexture_ hTex;
+				hTex.undeletable = true;
+				hTex.image = fb.sampleColorImage[i].first;
+				api::vulkan::TextureStoreVk texDs;
+				texDs.construct(getWeakRef(), hTex, types::ImageBaseType::Image2D);
+
+				native::HImageView_ hTexViewDs(fb.sampleColorImageViews[i], true);
+				texViewSampleColor.construct(texDs, hTexViewDs);
+
+				static_cast<api::ImageDataFormat&>(fmt) = api::ConvertFromVulkan::imageDataFormat(fb.colorFormat);
+				texDs->setDimensions(types::Extent3D((uint16)fboInfo.width, (uint16)fboInfo.height));
+				texDs->getFormat() = fmt;
+				texDs->setDimensions(types::Extent3D((uint16)fboInfo.width, (uint16)fboInfo.height));
+
+				fboInfo.setColor(0, texViewSampleColor);
+				fboInfo.setColor(1, texViewColor);
+
+			}
+
+			{
+				native::HTexture_ hTex;
+				hTex.undeletable = true;
+				hTex.image = fb.sampleDepthStencilImage[i].first;
+				api::vulkan::TextureStoreVk texDs;
+				texDs.construct(getWeakRef(), hTex, types::ImageBaseType::Image2D);
+
+				native::HImageView_ hTexViewDs(fb.sampleDepthStencilImageView[i], true);
+				texViewSampleDepth.construct(texDs, hTexViewDs);
+
+				static_cast<api::ImageDataFormat&>(fmt) = api::ConvertFromVulkan::imageDataFormat(fb.depthStencilFormat);
+				texDs->setDimensions(types::Extent3D((uint16)fboInfo.width, (uint16)fboInfo.height));
+				texDs->getFormat() = fmt;
+				texDs->setDimensions(types::Extent3D((uint16)fboInfo.width, (uint16)fboInfo.height));
+
+				fboInfo.setSampleDepthStencil(texViewSampleDepth);
+
+			}
+			
+		}
+		else
+		{
+			fboInfo.setColor(0, texViewColor);
+		}
+
+		
 
 		// add any additional color view attachments provided to the on screen fbo
 		for (auto i = 0u; i < onScreenFboCreateParam.getNumOffScreenColor(); ++i)

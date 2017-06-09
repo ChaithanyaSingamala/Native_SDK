@@ -5,8 +5,13 @@
 \brief        Contains the typedef's required for the EGL bindings.
 ***********************************************************************************************************************/
 #pragma once
+#ifdef EGL_API_FB
+#include <EGL-fb/egl.h>
+#include <EGL-fb/eglext.h>
+#else
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#endif
 
 #define PVR_APIENTRY KHRONOS_APIENTRY
 

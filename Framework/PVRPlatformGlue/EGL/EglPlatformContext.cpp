@@ -737,8 +737,11 @@ static inline Result initializeContext(const bool wantWindow, DisplayAttributes&
 	}
 
 }
-
-
+#ifdef EGL_API_FB
+#include "EGL-fb/eglplatform.h"
+EGLNativeDisplayType  eglNativeDisplay;
+EGLNativeWindowType   eglNativeWindow;
+#endif
 static inline Result preInitialize(OSManager& mgr, NativePlatformHandles& handles)
 {
 	if (!handles.get())
@@ -746,13 +749,20 @@ static inline Result preInitialize(OSManager& mgr, NativePlatformHandles& handle
 		handles.reset(new NativePlatformHandles::element_type);
 	}
 
+#ifdef EGL_API_FB	
+	eglNativeDisplay = fbGetDisplayByIndex(0);
+
 	// Associate the display with EGL.
+	handles->display = egl::GetDisplay(eglNativeDisplay);
+	eglNativeWindow = fbCreateWindow(eglNativeDisplay, 0, 0, 0, 0);
+#else
 	handles->display = egl::GetDisplay(reinterpret_cast<EGLNativeDisplayType>(mgr.getDisplay()));
 
 	if (handles->display == EGL_NO_DISPLAY)
 	{
 		handles->display = egl::GetDisplay(static_cast<EGLNativeDisplayType>(EGL_DEFAULT_DISPLAY));
 	}
+#endif
 
 
 	if (handles->display == EGL_NO_DISPLAY)
@@ -863,9 +873,14 @@ Result PlatformContext::init()
 			m_OSManager.getDisplayAttributes().frameBufferSrgb = false;
 		}
 	}
-
+	
+#ifdef EGL_API_FB	
+	m_platformContextHandles->drawSurface = m_platformContextHandles->readSurface = egl::CreateWindowSurface(
+	    m_platformContextHandles->display, config, eglNativeWindow, eglattribs);		
+#else
 	m_platformContextHandles->drawSurface = m_platformContextHandles->readSurface = egl::CreateWindowSurface(
 	    m_platformContextHandles->display, config, reinterpret_cast<EGLNativeWindowType>(m_OSManager.getWindow()), eglattribs);
+#endif
 	if (m_platformContextHandles->drawSurface == EGL_NO_SURFACE)
 	{
 		Log(Log.Error, "Context creation failed\n");
@@ -887,6 +902,7 @@ Result PlatformContext::init()
 	case VsyncMode::Relaxed: m_swapInterval = -1; break;
 	default: break;
 	}
+	Log("value of requested %d, m_swapInterval %d", m_OSManager.getDisplayAttributes().vsyncMode, m_swapInterval);
 	m_initialized = true;
 	return Result::Success;
 }
@@ -977,6 +993,7 @@ bool PlatformContext::makeCurrent()
 	if (m_swapInterval != -2)
 	{
 		// Set our swap interval which affects the current draw surface
+		Log("setting EGLSwapInterval %d", m_swapInterval);
 		egl::SwapInterval(m_platformContextHandles->display, m_swapInterval);
 		m_swapInterval = -2;
 	}

@@ -25,7 +25,8 @@ bool RenderPassVk_::init(const RenderPassCreateParam& createParam)
 
 	//--- Color Attachments
 	renderPassInfoVk.attachmentCount = createParam.getNumColorInfo() +
-	                                   (createParam.getDepthStencilInfo().format.format != PixelFormat::Unknown ? 1 : 0);
+	                                   (createParam.getDepthStencilInfo().format.format != PixelFormat::Unknown ? 1 : 0) + 
+		(createParam.getSampleDepthStencilInfo().format.format != PixelFormat::Unknown ? 1 : 0);
 
 	attachmentDescVk.resize(renderPassInfoVk.attachmentCount);
 	pvr::uint32 i = 0;
@@ -59,6 +60,39 @@ bool RenderPassVk_::init(const RenderPassCreateParam& createParam)
 		attachmentDescVk[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	}// next color attachment
 
+
+	if (createParam.getSampleDepthStencilInfo().format.format != PixelFormat::Unknown)
+	{
+		const RenderPassDepthStencilInfo& depthStencilInfo = createParam.getSampleDepthStencilInfo();
+		attachmentDescVk[i].flags = 0 /*VkAttachmentDescriptionFlagBits::VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT*/;
+		attachmentDescVk[i].samples = ConvertToVk::aaSamples((uint8)depthStencilInfo.numSamples);
+
+		if ((attachmentDescVk[i].format = ConvertToVk::pixelFormat(depthStencilInfo.format.format,
+			depthStencilInfo.format.colorSpace, depthStencilInfo.format.dataType)) == VK_FORMAT_UNDEFINED)
+		{
+			Log("Unsupported depth-stencil Format");
+			return false;
+		}
+
+		// validate the format feature
+		VkFormatProperties prop;
+		vk::GetPhysicalDeviceFormatProperties(platformHandle.context.physicalDevice, attachmentDescVk[i].format, &prop);
+
+		if (!(prop.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+		{
+			Log("Device not support this Format for depth-stencil attachment");
+			return false;
+		}
+
+		attachmentDescVk[i].loadOp = ConvertToVk::loadOp(depthStencilInfo.loadOpDepth);
+		attachmentDescVk[i].storeOp = ConvertToVk::storeOp(depthStencilInfo.storeOpDepth);
+		attachmentDescVk[i].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachmentDescVk[i].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachmentDescVk[i].stencilLoadOp = ConvertToVk::loadOp(depthStencilInfo.loadOpStencil);
+		attachmentDescVk[i].stencilStoreOp = ConvertToVk::storeOp(depthStencilInfo.storeOpStencil);
+
+		i++;
+	}
 	//--- Depth Stencil Attachments
 	if (createParam.getDepthStencilInfo().format.format != PixelFormat::Unknown)
 	{
@@ -119,6 +153,9 @@ bool RenderPassVk_::init(const RenderPassCreateParam& createParam)
 			inputAttachmentRefSize += subPass.getNumInputAttachment();
 			resolveAttachmentRefSize += subPass.getNumResolveAttachment();
 			preserveAttachmentRefSize += subPass.getNumPreserveAttachment();
+			
+			if (resolveAttachmentRefSize > 0)
+				resolveAttachmentRefSize += 1;
 		}
 		colorAttachmentRefs.resize(colorAttachmentRefSize);
 		inputAttachmentsRefs.resize(inputAttachmentRefSize);
@@ -172,8 +209,8 @@ bool RenderPassVk_::init(const RenderPassCreateParam& createParam)
 		// resolve attachments
 		if (subPass.getNumResolveAttachment() > 0)
 		{
-			assertion(subPass.getNumResolveAttachment() == subPass.getNumColorAttachment(),
-			          " If the number of resolve attachments is not 0 then it must have colorAttachmentCount entries");
+			//assertion(subPass.getNumResolveAttachment() == subPass.getNumColorAttachment(),
+			//          " If the number of resolve attachments is not 0 then it must have colorAttachmentCount entries");
 
 			subPassVk.pResolveAttachments = &resolveAttachmentsRefs[resolveAttachmentRefOffset];
 
@@ -207,14 +244,23 @@ bool RenderPassVk_::init(const RenderPassCreateParam& createParam)
 			subPassVk.preserveAttachmentCount = 0;
 		}
 
+		if (subPass.usesDepthStencilAttachment() && createParam.getSampleDepthStencilInfo().format.format != PixelFormat::Unknown)
+		{
+			resolveAttachmentsRefs[resolveAttachmentRefOffset].attachment = (uint32)(attachmentDescVk.size() - 1);
+			resolveAttachmentsRefs[resolveAttachmentRefOffset].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			++resolveAttachmentRefOffset;
+		}
+
 		// depth-stencil attachment
 		if (subPass.usesDepthStencilAttachment() && createParam.getDepthStencilInfo().format.format != PixelFormat::Unknown)
 		{
 			subPassVk.pDepthStencilAttachment = &colorAttachmentRefs[colorAttachmentRefOffset];
-			colorAttachmentRefs[colorAttachmentRefOffset].attachment = (uint32)(attachmentDescVk.size() - 1);
+			colorAttachmentRefs[colorAttachmentRefOffset].attachment = (uint32)(attachmentDescVk.size() - 2);
 			colorAttachmentRefs[colorAttachmentRefOffset].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			++colorAttachmentRefOffset;
 		}
+
+
 		subPassesVk[i] = subPassVk;
 	}// next subpass
 	renderPassInfoVk.pSubpasses = subPassesVk.data();

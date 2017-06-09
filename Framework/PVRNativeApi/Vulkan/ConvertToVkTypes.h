@@ -213,7 +213,7 @@ inline VkSampleCountFlagBits aaSamples(uint8 numSamples)
 	return (numSamples < 8 ?
 	        (numSamples < 2 ? VK_SAMPLE_COUNT_1_BIT : numSamples < 4 ? VK_SAMPLE_COUNT_2_BIT : VK_SAMPLE_COUNT_4_BIT)
 	        :
-	        (numSamples < 16 ? VK_SAMPLE_COUNT_8_BIT : numSamples < 32 ? VK_SAMPLE_COUNT_16_BIT : VK_SAMPLE_COUNT_32_BIT));
+	        (numSamples < 16 ? VK_SAMPLE_COUNT_4_BIT : numSamples < 32 ? VK_SAMPLE_COUNT_16_BIT : VK_SAMPLE_COUNT_32_BIT));
 }
 
 /*!****************************************************************************************************************
